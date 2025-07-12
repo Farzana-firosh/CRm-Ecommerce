@@ -109,6 +109,13 @@ export const translations = {
     no_discount: "No Discount",
     percentage: "Percentage",
     flat: "Flat",
+    username: "Username",
+    login: "Login",
+    password: "Password",
+    signin: "Sign in",
+    "Admin": "Admin",
+    "Sales Executive": "Sales Executive", 
+    "Finance": "Finance",
     // ...add more as needed
   },
   ar: {
@@ -221,6 +228,13 @@ export const translations = {
     no_discount: "بدون خصم",
     percentage: "نسبة مئوية",
     flat: "مبلغ ثابت",
+    username: "اسم المستخدم",
+    login: "تسجيل الدخول",
+    password: "كلمة المرور",
+    signin: "تسجيل الدخول",
+    "Admin": "مدير",
+    "Sales Executive": "مسؤول مبيعات", 
+    "Finance": "مالية",
     // ...add more as needed
     item_master: "إدارة المنتجات / الخدمات",
     add_new_item: "إضافة عنصر جديد",

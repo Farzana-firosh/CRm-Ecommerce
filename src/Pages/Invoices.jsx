@@ -1,62 +1,141 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { invoiceService } from '../services/invoiceService';
+import { customerService } from '../services/customerService';
+import { productService } from '../services/productService';
 
 const PAYMENT_STATUS = ['Unpaid', 'Partially Paid', 'Paid'];
 
 export default function SimpleInvoice() {
   const [invoices, setInvoices] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
 
+  const [customerId, setCustomerId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [salesOrderNo, setSalesOrderNo] = useState('');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('$');
   const [terms, setTerms] = useState('');
   const [globalDiscount, setGlobalDiscount] = useState(0);
   const [globalDiscountType, setGlobalDiscountType] = useState('%');
   const [lineItems, setLineItems] = useState([
-    { name: '', type: 'Product', quantity: 1, unit: '', price: 0, discount: 0, discountType: '%', tax: 0 }
+    { item_id: '', name: '', type: 'Product', quantity: 1, unit_price: 0, discount_value: 0, discount_type: 'percent', tax_rate: 0 }
   ]);
+
+  // Additional state variables for form management
+  const [editIndex, setEditIndex] = useState(null);
   const [paymentStatus, setPaymentStatus] = useState('Unpaid');
   const [payments, setPayments] = useState([]);
-  const [editIndex, setEditIndex] = useState(null);
 
-  const addLineItem = () => {
-    setLineItems([...lineItems, { name: '', type: 'Product', quantity: 1, unit: '', price: 0, discount: 0, discountType: '%', tax: 0 }]);
+  // Fetch data when component mounts
+  useEffect(() => {
+    fetchInvoices();
+    fetchCustomers();
+    fetchProducts();
+  }, []);
+
+  const fetchInvoices = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await invoiceService.getAllInvoices();
+      setInvoices(data);
+    } catch (err) {
+      setError('Failed to fetch invoices. Please try again.');
+      console.error('Error fetching invoices:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  const fetchCustomers = async () => {
+    try {
+      const data = await customerService.getAllCustomers();
+      setCustomers(data);
+    } catch (err) {
+      console.error('Error fetching customers:', err);
+    }
+  };
+
+  const fetchProducts = async () => {
+    try {
+      const data = await productService.getAllItems();
+      if (Array.isArray(data)) {
+        const transformedProducts = data.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: parseFloat(item.default_rate) || 0,
+          tax_rate: parseFloat(item.tax_rate) || 0
+        }));
+        setProducts(transformedProducts);
+      }
+    } catch (err) {
+      console.error('Error fetching products:', err);
+    }
+  };
+
+  const addLineItem = () => {
+    const currentItems = lineItems || [];
+    setLineItems([...currentItems, { item_id: '', name: '', type: 'Product', quantity: 1, unit_price: 0, discount_value: 0, discount_type: 'percent', tax_rate: 0 }]);
+  };
   const handleLineChange = (index, field, value) => {
-    const newLineItems = [...lineItems];
-    if (['quantity', 'price', 'discount', 'tax'].includes(field)) {
+    const currentItems = lineItems || [];
+    const newLineItems = [...currentItems];
+    
+    // Handle product selection
+    if (field === 'item_id') {
+      const selectedProduct = products.find(p => p.id === parseInt(value));
+      if (selectedProduct) {
+        newLineItems[index].item_id = value;
+        newLineItems[index].name = selectedProduct.name;
+        newLineItems[index].unit_price = selectedProduct.price;
+        newLineItems[index].tax_rate = selectedProduct.tax_rate || 0;
+      }
+    } else if (['quantity', 'unit_price', 'discount_value', 'tax_rate'].includes(field)) {
       value = Number(value);
       if (value < 0) value = 0;
+      newLineItems[index][field] = value;
+    } else {
+      newLineItems[index][field] = value;
     }
-    newLineItems[index][field] = value;
+
     setLineItems(newLineItems);
   };
 
   // Remove a line item
   const removeLineItem = (index) => {
-    setLineItems(lineItems.filter((_, i) => i !== index));
+    const currentItems = lineItems || [];
+    setLineItems(currentItems.filter((_, i) => i !== index));
   };
 
   const calcLineSubtotal = (item) => {
-    let base = item.quantity * item.price;
-    let discount = item.discountType === '%' ? (base * item.discount) / 100 : item.discount;
+    const quantity = parseFloat(item.quantity) || 0;
+    const unitPrice = parseFloat(item.unit_price) || 0;
+    const discountValue = parseFloat(item.discount_value) || 0;
+    const taxRate = parseFloat(item.tax_rate) || 0;
+    
+    let base = quantity * unitPrice;
+    let discount = item.discount_type === 'percent' ? (base * discountValue) / 100 : discountValue;
     let afterDiscount = base - discount;
-    let tax = (afterDiscount * item.tax) / 100;
+    let tax = (afterDiscount * taxRate) / 100;
     return afterDiscount + tax;
   };
 
   const calcSubtotal = () => {
-    return lineItems.reduce((sum, item) => sum + calcLineSubtotal(item), 0);
+    const currentItems = lineItems || [];
+    return currentItems.reduce((sum, item) => sum + calcLineSubtotal(item), 0);
   };
 
   const calcGlobalDiscount = (subtotal) => {
+    const discountValue = parseFloat(globalDiscount) || 0;
     if (globalDiscountType === '%') {
-      return (subtotal * globalDiscount) / 100;
+      return (subtotal * discountValue) / 100;
     }
-    return globalDiscount;
+    return discountValue;
   };
 
   const calculateTotal = () => {
@@ -70,71 +149,119 @@ export default function SimpleInvoice() {
     return Math.max(total - paid, 0);
   };
 
-  const saveInvoice = () => {
-    if (!customerName.trim()) {
-      alert('Please enter customer name');
+  const saveInvoice = async () => {
+    if (!customerId) {
+      alert('Please select a customer');
       return;
     }
-    if (lineItems.length === 0 || !lineItems[0].name) {
-      alert('Please enter at least one line item');
+    const currentItems = lineItems || [];
+    if (currentItems.length === 0 || !currentItems[0].item_id) {
+      alert('Please select at least one item');
       return;
     }
-    const total = calculateTotal();
-    const balanceDue = calculateBalanceDue(total, payments);
-    const newInvoice = {
-      id: Date.now(),
-      invoiceNo: `INV-${invoices.length + 1}`.padStart(8, '0'),
-      customerName,
-      invoiceDate,
-      dueDate,
-      salesOrderNo,
-      currency,
-      terms,
-      lineItems,
-      globalDiscount,
-      globalDiscountType,
-      total,
-      payments,
-      balanceDue,
-      paymentStatus: balanceDue === 0 ? 'Paid' : payments.length > 0 ? 'Partially Paid' : 'Unpaid',
-      createdBy: 'Current User',
-    };
-    if (editIndex !== null) {
-      const updated = [...invoices];
-      updated[editIndex] = newInvoice;
-      setInvoices(updated);
-      setEditIndex(null);
-    } else {
-      setInvoices([...invoices, newInvoice]);
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Get current user info
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      const createdBy = currentUser.email || 'Unknown User';
+
+      // Prepare invoice data for backend
+      const invoiceData = {
+        customer_id: parseInt(customerId),
+        invoice_date: invoiceDate,
+        due_date: dueDate,
+        sales_order_id: salesOrderNo ? parseInt(salesOrderNo) : null,
+        currency: currency,
+        status: 'Unpaid',
+        created_by: createdBy,
+        terms: terms,
+        items: currentItems.filter(item => item.item_id).map(item => ({
+          item_id: parseInt(item.item_id),
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          discount_type: item.discount_type === 'percent' ? 'percent' : 'flat',
+          discount_value: item.discount_value || 0,
+          tax_rate: item.tax_rate / 100 // Convert percentage to decimal
+        }))
+      };
+
+      const result = await invoiceService.createInvoice(invoiceData);
+      console.log('Invoice created:', result);
+
+      // Refresh invoices list
+      await fetchInvoices();
+      
+      resetForm();
+      setShowForm(false);
+      alert('Invoice created successfully!');
+    } catch (error) {
+      console.error('Error creating invoice:', error);
+      setError(`Failed to create invoice: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
-    resetForm();
-    setShowForm(false);
   };
 
-  const editInvoice = (idx) => {
-    const inv = invoices[idx];
-    setCustomerName(inv.customerName);
-    setInvoiceDate(inv.invoiceDate);
-    setDueDate(inv.dueDate);
-    setSalesOrderNo(inv.salesOrderNo);
-    setCurrency(inv.currency);
-    setTerms(inv.terms);
-    setLineItems(inv.lineItems);
-    setGlobalDiscount(inv.globalDiscount);
-    setGlobalDiscountType(inv.globalDiscountType);
-    setPayments(inv.payments || []);
-    setEditIndex(idx);
-    setShowForm(true);
+  const editInvoice = async (idx) => {
+    try {
+      const invoice = invoices[idx];
+      setLoading(true);
+      
+      // Fetch full invoice data with line items
+      const fullInvoiceData = await invoiceService.getInvoiceById(invoice.id);
+      
+      // Map backend data to frontend format
+      setCustomerId(fullInvoiceData.customer_id || '');
+      setCustomerName(fullInvoiceData.customer_name || invoice.customer_name || '');
+      setInvoiceDate(fullInvoiceData.invoice_date ? fullInvoiceData.invoice_date.split('T')[0] : '');
+      setDueDate(fullInvoiceData.due_date ? fullInvoiceData.due_date.split('T')[0] : '');
+      setSalesOrderNo(fullInvoiceData.sales_order_id || '');
+      setCurrency(fullInvoiceData.currency || '$');
+      setTerms(fullInvoiceData.terms || '');
+      
+      // Transform backend items to frontend format
+      if (fullInvoiceData.items && fullInvoiceData.items.length > 0) {
+        const transformedItems = fullInvoiceData.items.map(item => ({
+          item_id: item.item_id || '',
+          name: item.name || '',
+          type: item.type || 'Product',
+          quantity: item.quantity || 1,
+          unit_price: parseFloat(item.unit_price) || 0,
+          discount_value: parseFloat(item.discount_value) || 0,
+          discount_type: item.discount_type || 'percent',
+          tax_rate: parseFloat(item.tax_rate) || 0
+        }));
+        setLineItems(transformedItems);
+      } else {
+        setLineItems([{ item_id: '', name: '', type: 'Product', quantity: 1, unit_price: 0, discount_value: 0, discount_type: 'percent', tax_rate: 0 }]);
+      }
+      
+      setGlobalDiscount(parseFloat(fullInvoiceData.global_discount) || 0);
+      setGlobalDiscountType(fullInvoiceData.global_discount_type || '%');
+      setPaymentStatus(fullInvoiceData.status || 'Unpaid');
+      setPayments(fullInvoiceData.payments || []);
+      setEditIndex(idx);
+      setShowForm(true);
+    } catch (error) {
+      console.error('Error fetching invoice details:', error);
+      setError('Failed to load invoice details. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const resetForm = () => {
+    setCustomerId('');
     setCustomerName('');
     setInvoiceDate(new Date().toISOString().slice(0, 10));
     setDueDate(new Date().toISOString().slice(0, 10));
     setSalesOrderNo('');
-    setCurrency('USD');
+    setCurrency('$');
     setTerms('');
-    setLineItems([{ name: '', type: 'Product', quantity: 1, unit: '', price: 0, discount: 0, discountType: '%', tax: 0 }]);
+    setLineItems([{ item_id: '', name: '', type: 'Product', quantity: 1, unit_price: 0, discount_value: 0, discount_type: 'percent', tax_rate: 0 }]);
     setGlobalDiscount(0);
     setGlobalDiscountType('%');
     setPayments([]);
@@ -155,36 +282,181 @@ export default function SimpleInvoice() {
     setPaymentDate(new Date().toISOString().slice(0, 10));
   };
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     if (!paymentAmount || Number(paymentAmount) <= 0) return;
-    const updated = [...invoices];
-    const inv = { ...updated[selectedInvoice] };
-    inv.payments = [...(inv.payments || []), { amount: Number(paymentAmount), method: paymentMethod, date: paymentDate }];
-    inv.balanceDue = calculateBalanceDue(inv.total, inv.payments);
-    if (inv.balanceDue === 0) inv.paymentStatus = 'Paid';
-    else if (inv.payments.length > 0) inv.paymentStatus = 'Partially Paid';
-    else inv.paymentStatus = 'Unpaid';
-    updated[selectedInvoice] = inv;
-    setInvoices(updated);
-    setShowPayment(false);
-    setSelectedInvoice(null);
+    
+    try {
+      const invoice = invoices[selectedInvoice];
+      const paymentAmountNum = Number(paymentAmount);
+      
+      // Update backend - let backend calculate the proper status
+      await invoiceService.updatePaymentStatus(invoice.id, {
+        paid_amount: paymentAmountNum,
+        payment_date: paymentDate,
+        payment_method: paymentMethod
+      });
+      
+      // Refresh invoice list to get updated data
+      await fetchInvoices();
+      
+      setShowPayment(false);
+      setSelectedInvoice(null);
+      setPaymentAmount('');
+      setPaymentMethod('Cash');
+      setPaymentDate(new Date().toISOString().slice(0, 10));
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      setError('Failed to process payment. Please try again.');
+    }
   };
 
-  const downloadPDF = () => alert('Download PDF (not implemented)');
+  const downloadPDF = async (invoice) => {
+    try {
+      // Get full invoice details with items if not already loaded
+      let fullInvoice = invoice;
+      if (!invoice.items || invoice.items.length === 0) {
+        fullInvoice = await invoiceService.getInvoiceById(invoice.id);
+      }
+      
+      // Create a simple PDF-like view for printing
+      const printWindow = window.open('', '_blank');
+      const customer = customers.find(c => c.id === fullInvoice.customer_id) || { name: fullInvoice.customer_name || 'Unknown Customer' };
+      
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Invoice ${fullInvoice.invoice_number}</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 20px; }
+              .header { text-align: center; margin-bottom: 30px; }
+              .invoice-details { display: flex; justify-content: space-between; margin-bottom: 30px; }
+              .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+              .items-table th, .items-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              .items-table th { background-color: #f2f2f2; }
+              .totals { margin-left: auto; width: 300px; }
+              .total-line { display: flex; justify-content: space-between; margin: 5px 0; }
+              .final-total { font-weight: bold; border-top: 2px solid #333; padding-top: 5px; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>INVOICE</h1>
+              <h2>${fullInvoice.invoice_number}</h2>
+            </div>
+            
+            <div class="invoice-details">
+              <div>
+                <h3>Bill To:</h3>
+                <p>${customer.name}</p>
+              </div>
+              <div>
+                <p><strong>Invoice Date:</strong> ${new Date(fullInvoice.invoice_date).toLocaleDateString()}</p>
+                <p><strong>Due Date:</strong> ${new Date(fullInvoice.due_date).toLocaleDateString()}</p>
+                <p><strong>Status:</strong> ${fullInvoice.status}</p>
+              </div>
+            </div>
+            
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Qty</th>
+                  <th>Rate</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(fullInvoice.items || []).map(item => `
+                  <tr>
+                    <td>${item.name || 'Unknown Item'}</td>
+                    <td>${item.quantity}</td>
+                    <td>$${parseFloat(item.unit_price || 0).toFixed(2)}</td>
+                    <td>$${parseFloat(item.total_amount || 0).toFixed(2)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            
+            <div class="totals">
+              <div class="total-line">
+                <span>Subtotal:</span>
+                <span>$${parseFloat(fullInvoice.subtotal || 0).toFixed(2)}</span>
+              </div>
+              <div class="total-line">
+                <span>Tax:</span>
+                <span>$${parseFloat(fullInvoice.total_tax || 0).toFixed(2)}</span>
+              </div>
+              <div class="total-line final-total">
+                <span>Total:</span>
+                <span>$${parseFloat(fullInvoice.total_amount || 0).toFixed(2)}</span>
+              </div>
+              <div class="total-line">
+                <span>Balance Due:</span>
+                <span>$${parseFloat(fullInvoice.balance_due || fullInvoice.total_amount || 0).toFixed(2)}</span>
+              </div>
+            </div>
+          </body>
+        </html>
+      `);
+      
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      setError('Failed to generate PDF. Please try again.');
+    }
+  };
   const sendEmail = () => alert('Send Email (not implemented)');
 
-  const cancelInvoice = (idx) => {
-    const updated = [...invoices];
-    updated[idx].paymentStatus = 'Cancelled';
-    setInvoices(updated);
+  const cancelInvoice = async (idx) => {
+    try {
+      const invoice = invoices[idx];
+      await invoiceService.updatePaymentStatus(invoice.id, {
+        payment_status: 'Cancelled',
+        paid_amount: 0,
+        payment_date: new Date().toISOString().split('T')[0]
+      });
+      
+      // Update local state
+      const updated = [...invoices];
+      updated[idx].status = 'Cancelled';
+      setInvoices(updated);
+    } catch (error) {
+      console.error('Error cancelling invoice:', error);
+      setError('Failed to cancel invoice. Please try again.');
+    }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 py-8 px-1 sm:px-4">
       <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow-2xl border border-blue-100 p-2 sm:p-6 md:p-8">
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-blue-900 mb-6 sm:mb-8 text-center tracking-tight">
-          Invoice Management
-        </h2>
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            {error}
+            <button 
+              onClick={() => setError(null)}
+              className="float-right text-red-700 hover:text-red-900"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mb-6 sm:mb-8">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-blue-900 tracking-tight">
+            Invoice Management
+          </h2>
+          <button 
+            className="bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white px-4 py-2 rounded-xl font-semibold shadow-lg transition-all duration-150"
+            onClick={fetchInvoices}
+            disabled={loading}
+          >
+            🔄 {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
 
         {!showForm && (
           <>
@@ -195,7 +467,14 @@ export default function SimpleInvoice() {
               + New Invoice
             </button>
 
-            {invoices.length === 0 ? (
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="flex justify-center items-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-3 text-blue-600">Loading invoices...</span>
+                </div>
+              </div>
+            ) : invoices.length === 0 ? (
               <p className="text-blue-400 text-center mt-8">No invoices created yet.</p>
             ) : (
               <div className="overflow-x-auto rounded-xl border border-blue-100 shadow">
@@ -217,32 +496,32 @@ export default function SimpleInvoice() {
                   <tbody>
                     {invoices.map((inv, idx) => (
                       <tr key={inv.id} className="bg-white border-b hover:bg-blue-50 transition">
-                        <td className="p-2 sm:p-3">{inv.invoiceNo}</td>
-                        <td className="p-2 sm:p-3">{inv.customerName}</td>
-                        <td className="p-2 sm:p-3">{inv.salesOrderNo}</td>
-                        <td className="p-2 sm:p-3">{inv.invoiceDate}</td>
-                        <td className="p-2 sm:p-3">{inv.dueDate}</td>
+                        <td className="p-2 sm:p-3">{inv.invoice_number}</td>
+                        <td className="p-2 sm:p-3">{inv.customer_name}</td>
+                        <td className="p-2 sm:p-3">{inv.sales_order_id || '-'}</td>
+                        <td className="p-2 sm:p-3">{inv.invoice_date}</td>
+                        <td className="p-2 sm:p-3">{inv.due_date}</td>
                         <td className="p-2 sm:p-3">
                           <span className={`px-2 py-1 rounded text-xs font-bold ${
-                            inv.paymentStatus === 'Paid' ? 'bg-green-100 text-green-700'
-                            : inv.paymentStatus === 'Partially Paid' ? 'bg-yellow-100 text-yellow-700'
-                            : inv.paymentStatus === 'Cancelled' ? 'bg-gray-200 text-gray-500'
+                            inv.status === 'Paid' ? 'bg-green-100 text-green-700'
+                            : inv.status === 'Partially Paid' ? 'bg-yellow-100 text-yellow-700'
+                            : inv.status === 'Cancelled' ? 'bg-gray-200 text-gray-500'
                             : 'bg-red-100 text-red-700'
                           }`}>
-                            {inv.paymentStatus}
+                            {inv.status}
                           </span>
                         </td>
-                        <td className="p-2 sm:p-3 font-semibold text-blue-900">{inv.total.toFixed(2)} {inv.currency}</td>
-                        <td className="p-2 sm:p-3">{inv.balanceDue.toFixed(2)}</td>
-                        <td className="p-2 sm:p-3">{inv.createdBy}</td>
+                        <td className="p-2 sm:p-3 font-semibold text-blue-900">${parseFloat(inv.total_amount || 0).toFixed(2)}</td>
+                        <td className="p-2 sm:p-3">${parseFloat(inv.balance_due || inv.total_amount || 0).toFixed(2)}</td>
+                        <td className="p-2 sm:p-3">{inv.created_by || 'System'}</td>
                         <td className="p-2 sm:p-3 flex flex-wrap gap-1">
                           <button onClick={() => editInvoice(idx)} className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded text-xs font-semibold">Edit</button>
-                          <button onClick={downloadPDF} className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded text-xs font-semibold">PDF</button>
+                          <button onClick={() => downloadPDF(inv)} className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-2 py-1 rounded text-xs font-semibold">PDF</button>
                           <button onClick={sendEmail} className="bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded text-xs font-semibold">Email</button>
-                          {inv.paymentStatus !== 'Paid' && inv.paymentStatus !== 'Cancelled' && (
+                          {inv.status !== 'Paid' && inv.status !== 'Cancelled' && (
                             <button onClick={() => openPayment(idx)} className="bg-yellow-100 hover:bg-yellow-200 text-yellow-700 px-2 py-1 rounded text-xs font-semibold">Payment</button>
                           )}
-                          {inv.paymentStatus !== 'Cancelled' && (
+                          {inv.status !== 'Cancelled' && (
                             <button onClick={() => cancelInvoice(idx)} className="bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded text-xs font-semibold">Cancel</button>
                           )}
                         </td>
@@ -260,14 +539,25 @@ export default function SimpleInvoice() {
             <h3 className="text-xl font-bold text-blue-900 mb-3 sm:mb-4">{editIndex !== null ? 'Edit Invoice' : 'Create Invoice'}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
               <div>
-                <label className="font-semibold text-blue-900">Customer Name</label>
-                <input
-                  type="text"
-                  value={customerName}
-                  onChange={e => setCustomerName(e.target.value)}
-                  className="w-full mt-1 p-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 transition bg-white text-blue-900 font-medium placeholder-blue-400 shadow-sm"
-                  placeholder="Enter customer name"
-                />
+                <label className="font-semibold text-blue-900">Customer</label>
+                <select
+                  value={customerId}
+                  onChange={e => {
+                    setCustomerId(e.target.value);
+                    const selectedCustomer = customers.find(c => c.id === parseInt(e.target.value));
+                    setCustomerName(selectedCustomer ? selectedCustomer.name : '');
+                  }}
+                  className="w-full mt-1 p-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 transition bg-white text-blue-900 font-medium shadow-sm"
+                >
+                  <option value="">
+                    {customers.length === 0 ? "Loading customers..." : "Select customer"}
+                  </option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="font-semibold text-blue-900">Sales Order No.</label>
@@ -304,9 +594,9 @@ export default function SimpleInvoice() {
                   onChange={e => setCurrency(e.target.value)}
                   className="w-full mt-1 p-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 transition bg-white"
                 >
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="INR">INR</option>
+                  <option value="$">USD ($)</option>
+                  <option value="€">EUR (€)</option>
+                  <option value="₹">INR (₹)</option>
                 </select>
               </div>
               <div>
@@ -322,10 +612,10 @@ export default function SimpleInvoice() {
             </div>
 
             <h4 className="font-semibold text-blue-900 mb-2 mt-3 sm:mt-4">Line Items</h4>
-            {lineItems.map((item, idx) => (
+            {lineItems && lineItems.length > 0 ? lineItems.map((item, idx) => (
               <div
                 key={idx}
-                className="flex flex-col sm:flex-row gap-2 mb-2 items-end bg-white/80 rounded-lg p-2 sm:p-0 sm:items-end items-stretch"
+                className="flex flex-col sm:flex-row gap-2 mb-2 bg-white/80 rounded-lg p-2 sm:items-center"
               >
                 <select
                   value={item.type}
@@ -335,20 +625,20 @@ export default function SimpleInvoice() {
                   <option value="Product">Product</option>
                   <option value="Service">Service</option>
                 </select>
-                <input
-                  type="text"
-                  placeholder="Item name"
-                  value={item.name}
-                  onChange={e => handleLineChange(idx, 'name', e.target.value)}
+                <select
+                  value={item.item_id}
+                  onChange={e => handleLineChange(idx, 'item_id', e.target.value)}
                   className="flex-1 p-2 border border-blue-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-300 transition text-sm"
-                />
-                <input
-                  type="text"
-                  placeholder="Unit"
-                  value={item.unit}
-                  onChange={e => handleLineChange(idx, 'unit', e.target.value)}
-                  className="w-20 p-2 border border-blue-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-300 transition text-sm"
-                />
+                >
+                  <option value="">
+                    {products.length === 0 ? "Loading products..." : "Select product"}
+                  </option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name} - ${product.price}
+                    </option>
+                  ))}
+                </select>
                 <input
                   type="number"
                   min="1"
@@ -360,37 +650,38 @@ export default function SimpleInvoice() {
                 <input
                   type="number"
                   min="0"
+                  step="0.01"
                   placeholder="Unit Price"
-                  value={item.price}
-                  onChange={e => handleLineChange(idx, 'price', e.target.value)}
+                  value={item.unit_price}
+                  onChange={e => handleLineChange(idx, 'unit_price', e.target.value)}
                   className="w-24 p-2 border border-blue-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-300 transition text-sm"
                 />
                 <input
                   type="number"
                   min="0"
                   placeholder="Discount"
-                  value={item.discount}
-                  onChange={e => handleLineChange(idx, 'discount', e.target.value)}
+                  value={item.discount_value}
+                  onChange={e => handleLineChange(idx, 'discount_value', e.target.value)}
                   className="w-16 p-2 border border-blue-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-300 transition text-sm"
                 />
                 <select
-                  value={item.discountType}
-                  onChange={e => handleLineChange(idx, 'discountType', e.target.value)}
+                  value={item.discount_type}
+                  onChange={e => handleLineChange(idx, 'discount_type', e.target.value)}
                   className="p-2 border border-blue-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-300 transition text-sm"
                 >
-                  <option value="%">%</option>
-                  <option value="fixed">Fixed</option>
+                  <option value="percent">%</option>
+                  <option value="flat">Fixed</option>
                 </select>
                 <input
                   type="number"
                   min="0"
                   placeholder="Tax %"
-                  value={item.tax}
-                  onChange={e => handleLineChange(idx, 'tax', e.target.value)}
+                  value={item.tax_rate}
+                  onChange={e => handleLineChange(idx, 'tax_rate', e.target.value)}
                   className="w-16 p-2 border border-blue-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-300 transition text-sm"
                 />
-                <span className="text-blue-900 font-semibold text-xs sm:text-sm px-2 whitespace-nowrap text-right sm:text-left w-full sm:w-auto">
-                  Subtotal: {calcLineSubtotal(item).toFixed(2)}
+                <span className="text-blue-900 font-semibold text-xs sm:text-sm px-2 whitespace-nowrap">
+                  ${calcLineSubtotal(item).toFixed(2)}
                 </span>
                 {lineItems.length > 1 && (
                   <button
@@ -400,7 +691,9 @@ export default function SimpleInvoice() {
                   >×</button>
                 )}
               </div>
-            ))}
+            )) : (
+              <div className="text-gray-500 italic">No line items</div>
+            )}
             <button
               onClick={addLineItem}
               className="bg-blue-100 hover:bg-blue-200 text-blue-700 font-semibold px-4 py-2 rounded-lg shadow transition mb-3 sm:mb-4"

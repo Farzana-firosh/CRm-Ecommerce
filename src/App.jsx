@@ -24,7 +24,7 @@ function App() {
      <div dir={language === 'ar' ? 'rtl' : 'ltr'}> 
       <Routes>
       
-              <Route path="/" element={<Navigate to="/dashboard" />} />
+              <Route path="/" element={<Navigate to="/login" />} />
       <Route path="/login" element={ <Layout><Login /> </Layout>} />
       <Route path="/dashboard" element={<Layout><DashBoard/></Layout>} />
       <Route path="/reports" element={<Layout><Reports/></Layout>} />

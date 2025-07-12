@@ -83,7 +83,7 @@ export default function SideBar() {
                   {t("user")}
                 </p>
                 <p className="text-xs text-blue-200">
-                  {CurrentUser.role === "admin"
+                  {CurrentUser.role === "Admin"
                     ? t("admin_user")
                     : CurrentUser.email || ""}
                 </p>
@@ -160,7 +160,7 @@ export default function SideBar() {
               </li>
             </ul>
 
-            {(CurrentUser.role === "admin" || CurrentUser.role === "sales") && (
+            {(CurrentUser.role === "Admin" || CurrentUser.role === "Sales Executive") && (
               <>
                 <p className={sectionTitle}>{t("sales_process")}</p>
                 <ul className="space-y-1 mb-3">
@@ -198,8 +198,8 @@ export default function SideBar() {
               </>
             )}
 
-            {(CurrentUser.role === "admin" ||
-              CurrentUser.role === "finance") && (
+            {(CurrentUser.role === "Admin" ||
+              CurrentUser.role === "Finance") && (
               <>
                 <p className={sectionTitle}>{t("finance")}</p>
                 <ul className="space-y-1 mb-3">
@@ -222,7 +222,7 @@ export default function SideBar() {
               </>
             )}
 
-            {CurrentUser.role === "admin" && (
+            {CurrentUser.role === "Admin" && (
               <>
                 <p className={sectionTitle}>{t("reports")}</p>
                 <ul className="space-y-1 mb-3">
@@ -258,7 +258,7 @@ export default function SideBar() {
                   }`
                   }
                 >
-                  <LogInIcon size={18} /> {t("user_login")}
+                  <LogInIcon size={18} /> {t("Log out")}
                 </NavLink>
               </li>
             </ul>

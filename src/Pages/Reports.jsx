@@ -1,24 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from '../Components/Context/LanguageContext';
-
-const sampleSales = [
-  { id: 1, date: '2025-05-01', customer: 'Global Industries', total: 250, status: 'Paid' },
-  { id: 2, date: '2025-05-05', customer: 'Smart Tech', total: 150, status: 'Unpaid' },
-  { id: 3, date: '2025-05-10', customer: 'Ali Traders', total: 300, status: 'Partially Paid' },
-  { id: 4, date: '2025-05-12', customer: 'Zara Corp', total: 450, status: 'Paid' },
-  { id: 5, date: '2025-05-15', customer: 'Blue Ocean LLC', total: 200, status: 'Paid' },
-  { id: 6, date: '2025-05-18', customer: 'NextGen Solutions', total: 350, status: 'Unpaid' },
-  { id: 7, date: '2025-05-20', customer: 'Sunrise Enterprises', total: 180, status: 'Partially Paid' },
-  { id: 8, date: '2025-05-22', customer: 'Green Fields', total: 275, status: 'Paid' },
-];
+import { reportsService } from '../services/reportsService';
 
 export default function SalesReport() {
   const { t, language } = useTranslation();
-  const [sales] = useState(sampleSales);
+  const [sales, setSales] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+
+  // Fetch sales data from backend when component mounts
+  useEffect(() => {
+    fetchSalesData();
+  }, []);
+
+  const fetchSalesData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const salesData = await reportsService.getSalesReportData();
+      setSales(salesData);
+    } catch (err) {
+      setError('Failed to fetch sales data. Please try again.');
+      console.error('Error fetching sales data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredSales = sales.filter((sale) => {
     const saleDate = new Date(sale.date);
@@ -39,9 +50,31 @@ export default function SalesReport() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 py-8 px-2 sm:px-6" style={{ direction: rtl }}>
       <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-2xl border border-blue-100 p-4 sm:p-8">
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-blue-900 mb-8 text-center tracking-tight">
-          {t('Sales Report')}
-        </h2>
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            {error}
+            <button 
+              onClick={() => setError(null)}
+              className="float-right text-red-700 hover:text-red-900"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mb-8">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-blue-900 tracking-tight">
+            {t('Sales Report')}
+          </h2>
+          <button 
+            className="bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white px-4 py-2 rounded-xl font-semibold shadow-lg transition-all duration-150"
+            onClick={fetchSalesData}
+            disabled={loading}
+          >
+            🔄 {loading ? 'Refreshing...' : t('refresh')}
+          </button>
+        </div>
 
         <div className="flex flex-col sm:flex-row gap-4 mb-8 justify-between items-center">
           <label className="flex flex-col font-semibold text-blue-900 text-sm w-full sm:w-1/3">
@@ -88,7 +121,16 @@ export default function SalesReport() {
               </tr>
             </thead>
             <tbody>
-              {filteredSales.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan="4" className="text-center py-12 bg-white rounded-xl">
+                    <div className="flex justify-center items-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      <span className="ml-3 text-blue-600">Loading sales data...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredSales.length === 0 ? (
                 <tr>
                   <td colSpan="4" className="text-center text-blue-400 py-8 bg-white rounded-xl">
                     {t('no_sales_found')}

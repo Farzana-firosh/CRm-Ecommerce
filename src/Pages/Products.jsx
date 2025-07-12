@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from '../Components/Context/LanguageContext';
+import { productService } from '../services/productService';
 
 const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
 const isAdmin = currentUser.role === 'Admin';
@@ -8,6 +9,8 @@ function Products() {
   const { t, language } = useTranslation();
 
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const [newItem, setNewItem] = useState({
     type: 'Product',
@@ -24,36 +27,96 @@ function Products() {
     status: 'All',
   });
 
-  const addItem = () => {
+  // Fetch items from backend on component mount
+  useEffect(() => {
+    fetchItems();
+  }, []);
+
+  const fetchItems = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const data = await productService.getAllItems();
+      
+      // Map backend field names to frontend format
+      const mappedItems = data.map(item => ({
+        id: item.id,
+        type: item.item_type,
+        name: item.name,
+        description: item.description,
+        unit: item.unit_of_measure,
+        rate: item.default_rate,
+        tax: item.tax_rate,
+        status: item.status
+      }));
+      
+      setItems(mappedItems);
+    } catch (err) {
+      setError(err.message);
+      console.error('Error fetching items:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addItem = async () => {
     if (!isAdmin) return;
     if (!newItem.name || !newItem.unit || !newItem.rate) {
       alert(t('fill name unit rate'));
       return;
     }
-    setItems([
-      ...items,
-      {
-        ...newItem,
-        type: newItem.type === 'Service' ? 'Service' : 'Product',
-        status: newItem.status === 'Inactive' ? 'Inactive' : 'Active',
-      },
-    ]);
-    setNewItem({
-      type: 'Product',
-      name: '',
-      description: '',
-      unit: '',
-      rate: '',
-      tax: '',
-      status: 'Active',
-    });
+
+    try {
+      // Prepare data for backend with correct field names
+      const itemData = {
+        item_type: newItem.type,
+        name: newItem.name,
+        description: newItem.description,
+        unit_of_measure: newItem.unit,
+        default_rate: parseFloat(newItem.rate),
+        tax_rate: parseFloat(newItem.tax) || 0,
+        status: newItem.status
+      };
+
+      const createdItem = await productService.createItem(itemData);
+      
+      // Refresh the items list from backend to get the latest data
+      await fetchItems();
+
+      // Reset form
+      setNewItem({
+        type: 'Product',
+        name: '',
+        description: '',
+        unit: '',
+        rate: '',
+        tax: '',
+        status: 'Active',
+      });
+    } catch (err) {
+      alert(`Error adding item: ${err.message}`);
+      console.error('Error adding item:', err);
+    }
   };
 
-  const deactivateItem = (index) => {
+  const deactivateItem = async (index) => {
     if (!isAdmin) return;
-    const updatedItems = [...items];
-    updatedItems[index].status = 'Inactive';
-    setItems(updatedItems);
+    
+    const item = filteredItems[index];
+    if (!item.id) {
+      console.error('Item ID not found');
+      return;
+    }
+
+    try {
+      await productService.updateItemStatus(item.id, 'Inactive');
+      
+      // Refresh the items list from backend
+      await fetchItems();
+    } catch (err) {
+      alert(`Error deactivating item: ${err.message}`);
+      console.error('Error deactivating item:', err);
+    }
   };
 
   const filteredItems = items.filter((item) => {
@@ -168,6 +231,17 @@ function Products() {
         </div>
 
         <h3 className="text-lg font-bold text-blue-900 mb-4">{t('Items List')}</h3>
+        
+        {loading && (
+          <div className="text-center text-blue-600 py-4">Loading items...</div>
+        )}
+        
+        {error && (
+          <div className="text-center text-red-600 py-4 mb-4 bg-red-50 rounded-lg">
+            Error: {error}
+          </div>
+        )}
+        
         <div className="overflow-x-auto rounded-xl border border-blue-100 shadow">
           <table className="w-full text-xs sm:text-sm min-w-[700px]">
             <thead>

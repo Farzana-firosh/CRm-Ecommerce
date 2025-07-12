@@ -1,27 +1,22 @@
-import React, { useState } from "react";
-import { useTranslation } from "../Components/Context/LanguageContext"; 
-
-const customers = [
-  { id: 1, name: "Sunrise Retail Ltd" },
-  { id: 2, name: "GlobalTech Solutions" },
-  { id: 3, name: " Urban Build Co" },
-];
-
-const products = [
-  { id: 1, name: "Printer Paper", price: 800 },
-  { id: 2, name: "Coffee Beans", price: 500 },
-  { id: 3, name: "LED Bulbs", price: 950 },
-];
+import React, { useState, useEffect } from "react";
+import { useTranslation } from "../Components/Context/LanguageContext";
+import { salesOrderService } from "../services/salesOrderService";
+import { customerService } from "../services/customerService";
+import { productService } from "../services/productService";
 
 export default function SalesOrders() {
   const { t } = useTranslation(); 
   const [orders, setOrders] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [newOrder, setNewOrder] = useState({
     customer: "",
     date: new Date().toISOString().split("T")[0],
     reference: "",
-    currency: "USD",
+    currency: "$",
     notes: "",
     items: [],
     overallDiscount: { type: "none", value: 0 },
@@ -36,6 +31,82 @@ export default function SalesOrders() {
     discountValue: 0,
     tax: 10,
   });
+
+  // Fetch data from backend when component mounts
+  useEffect(() => {
+    fetchSalesOrders();
+    fetchCustomers();
+    fetchProducts();
+  }, []);
+
+  const fetchSalesOrders = async () => {
+    try {
+      setLoading(true);
+      const data = await salesOrderService.getAllSalesOrders();
+      
+      // Transform backend data to match frontend format
+      const transformedData = data.map(item => ({
+        id: item.id,
+        customer: item.customer_id,
+        date: item.order_date,
+        reference: item.reference_no,
+        currency: item.currency,
+        notes: item.notes,
+        status: item.status,
+        grandTotal: parseFloat(item.grand_total) || 0,
+        subtotal: parseFloat(item.subtotal) || 0,
+        items: [] // Items will be fetched separately if needed
+      }));
+      
+      setOrders(transformedData);
+      setError(null);
+    } catch (err) {
+      setError('Failed to fetch sales orders. Please try again.');
+      console.error('Error fetching sales orders:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCustomers = async () => {
+    try {
+      const data = await customerService.getAllCustomers();
+      setCustomers(data);
+    } catch (err) {
+      console.error('Error fetching customers:', err);
+    }
+  };
+
+  const fetchProducts = async () => {
+    try {
+      const data = await productService.getAllItems();
+      
+      if (!Array.isArray(data)) {
+        console.error('❌ Products data is not an array:', data);
+        setError('Invalid products data received from server');
+        return;
+      }
+      
+      // Transform backend data to match frontend format
+      const transformedProducts = data.map(item => ({
+        id: item.id,
+        name: item.name,
+        price: parseFloat(item.default_rate) || 0
+      }));
+      setProducts(transformedProducts);
+    } catch (err) {
+      console.error('❌ Error fetching products:', err);
+      
+      // Check if it's an authentication error
+      if (err.message.includes('401') || err.message.includes('Unauthorized')) {
+        setError('Authentication required. Please login to access products.');
+      } else if (err.message.includes('403') || err.message.includes('Forbidden')) {
+        setError('Access denied. You do not have permission to view products.');
+      } else {
+        setError('Failed to fetch products. Please try again.');
+      }
+    }
+  };
 
   const addItem = () => {
     if (!currentItem.productId) return;
@@ -106,49 +177,124 @@ export default function SalesOrders() {
     };
   };
 
-  const saveOrder = () => {
-    const orderNumber = `SO-${Math.floor(Math.random() * 10000)}`;
-    const totals = calculateTotals();
-    setOrders([
-      ...orders,
-      {
-        ...newOrder,
-        id: orderNumber,
-        ...totals,
-      },
-    ]);
-    setNewOrder({
-      customer: "",
-      date: new Date().toISOString().split("T")[0],
-      reference: "",
-      currency: "USD",
-      notes: "",
-      items: [],
-      overallDiscount: { type: "none", value: 0 },
-      status: "Draft",
-    });
-    setShowForm(false);
+  const saveOrder = async () => {
+    try {
+      if (!newOrder.customer) {
+        alert('Please select a customer');
+        return;
+      }
+      if (newOrder.items.length === 0) {
+        alert('Please add at least one item');
+        return;
+      }
+
+      setLoading(true);
+      const orderNumber = `SO-2025-${String(orders.length + 1).padStart(3, '0')}`;
+      const totals = calculateTotals();
+
+      // Prepare data for backend
+      const orderData = {
+        customer_id: parseInt(newOrder.customer),
+        order_date: newOrder.date,
+        reference_no: orderNumber,
+        currency: newOrder.currency,
+        notes: newOrder.notes,
+        overall_discount_type: newOrder.overallDiscount.type === 'none' ? null : newOrder.overallDiscount.type,
+        overall_discount_value: newOrder.overallDiscount.value || 0,
+        items: newOrder.items.map(item => ({
+          item_id: parseInt(item.productId),
+          quantity: item.quantity,
+          unit_price: item.price,
+          line_discount_type: item.discountType === 'none' ? null : item.discountType,
+          line_discount_value: item.discountValue || 0,
+          tax_rate: item.tax / 100 // Convert percentage to decimal
+        }))
+      };
+
+      const createdOrder = await salesOrderService.createSalesOrder(orderData);
+      
+      // Add to local state with frontend format
+      const newEntry = {
+        id: createdOrder.order.id,
+        customer: parseInt(newOrder.customer),
+        date: newOrder.date,
+        reference: orderNumber,
+        currency: newOrder.currency,
+        notes: newOrder.notes,
+        status: 'Draft',
+        grandTotal: totals.grandTotal,
+        subtotal: totals.subtotal,
+        items: newOrder.items
+      };
+
+      setOrders([newEntry, ...orders]);
+      setNewOrder({
+        customer: "",
+        date: new Date().toISOString().split("T")[0],
+        reference: "",
+        currency: "$",
+        notes: "",
+        items: [],
+        overallDiscount: { type: "none", value: 0 },
+        status: "Draft",
+      });
+      setShowForm(false);
+    } catch (error) {
+      console.error('Error creating sales order:', error);
+      alert(`Failed to create sales order: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const confirmOrder = (id) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === id ? { ...o, status: "Confirmed" } : o))
-    );
+  const confirmOrder = async (id) => {
+    try {
+      await salesOrderService.confirmSalesOrder(id);
+      setOrders((prev) =>
+        prev.map((o) => (o.id === id ? { ...o, status: "Confirmed" } : o))
+      );
+    } catch (error) {
+      console.error('Error confirming sales order:', error);
+      alert('Failed to confirm sales order. Please try again.');
+    }
   };
 
   return (
     <div className="p-2 sm:p-4 md:p-6 bg-gray-50 min-h-screen">
       <div className="max-w-5xl mx-auto">
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            {error}
+            <button 
+              onClick={() => setError(null)}
+              className="float-right text-red-700 hover:text-red-900"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-blue-900 tracking-tight">
             {t("Sales Order Management")}
           </h1>
-          <button
-            onClick={() => setShowForm(true)}
-            className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white px-4 sm:px-6 py-2 rounded-xl font-bold shadow transition-all duration-150 text-base w-full sm:w-auto"
-          >
-            + {t("Create Sales Order")}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowForm(true)}
+              className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white px-4 sm:px-6 py-2 rounded-xl font-bold shadow transition-all duration-150 text-base w-full sm:w-auto"
+              disabled={loading}
+            >
+              + {t("Create Sales Order")}
+            </button>
+            <button 
+              className="bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white px-4 sm:px-5 py-2 rounded-xl font-semibold shadow-lg transition-all duration-150"
+              onClick={fetchSalesOrders}
+              disabled={loading}
+            >
+              🔄 {loading ? 'Refreshing...' : t('refresh')}
+            </button>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-2 sm:p-4 md:p-6 overflow-x-auto">
@@ -176,47 +322,57 @@ export default function SalesOrders() {
               </tr>
             </thead>
             <tbody>
-              {orders.length === 0 && (
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-12">
+                    <div className="flex justify-center items-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      <span className="ml-3 text-blue-600">Loading sales orders...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : orders.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center text-blue-400 py-8">
                     {t("No sales orders")}
                   </td>
                 </tr>
-              )}
-              {orders.map((o) => (
-                <tr key={o.id} className="hover:bg-blue-50 transition">
-                  <td className="p-2 sm:p-3 font-mono break-all">{o.id}</td>
-                  <td className="p-2 sm:p-3">
-                    {customers.find((c) => c.id === parseInt(o.customer))
-                      ?.name || ""}
-                  </td>
-                  <td className="p-2 sm:p-3">{o.date}</td>
-                  <td className="p-2 sm:p-3">
-                    <span
-                      className={
-                        o.status === "Confirmed"
-                          ? "inline-block px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold"
-                          : "inline-block px-3 py-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold"
-                      }
-                    >
-                      {t(o.status.toLowerCase())}
-                    </span>
-                  </td>
-                  <td className="p-2 sm:p-3 font-semibold text-blue-900">
-                    ${o.grandTotal.toFixed(2)}
-                  </td>
-                  <td className="p-2 sm:p-3 space-x-2">
-                    {o.status === "Draft" && (
-                      <button
-                        className="inline-flex items-center px-3 py-1 rounded-lg bg-green-50 text-green-700 font-semibold text-xs hover:bg-green-100 transition"
-                        onClick={() => confirmOrder(o.id)}
+              ) : (
+                orders.map((o) => (
+                  <tr key={o.id} className="hover:bg-blue-50 transition">
+                    <td className="p-2 sm:p-3 font-mono break-all">{o.reference || o.id}</td>
+                    <td className="p-2 sm:p-3">
+                      {customers.find((c) => c.id === parseInt(o.customer))
+                        ?.name || ""}
+                    </td>
+                    <td className="p-2 sm:p-3">{o.date}</td>
+                    <td className="p-2 sm:p-3">
+                      <span
+                        className={
+                          o.status === "Confirmed"
+                            ? "inline-block px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold"
+                            : "inline-block px-3 py-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold"
+                        }
                       >
-                        {t("confirm")}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                        {t(o.status.toLowerCase())}
+                      </span>
+                    </td>
+                    <td className="p-2 sm:p-3 font-semibold text-blue-900">
+                      ${o.grandTotal?.toFixed(2) || '0.00'}
+                    </td>
+                    <td className="p-2 sm:p-3 space-x-2">
+                      {o.status === "Draft" && (
+                        <button
+                          className="inline-flex items-center px-3 py-1 rounded-lg bg-green-50 text-green-700 font-semibold text-xs hover:bg-green-100 transition"
+                          onClick={() => confirmOrder(o.id)}
+                        >
+                          {t("confirm")}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -247,7 +403,9 @@ export default function SalesOrders() {
                         setNewOrder({ ...newOrder, customer: e.target.value })
                       }
                     >
-                      <option value="">{t("select")}</option>
+                      <option value="">
+                        {customers.length === 0 ? "Loading customers..." : t("select")}
+                      </option>
                       {customers.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name}
@@ -288,10 +446,12 @@ export default function SalesOrders() {
                         });
                       }}
                     >
-                      <option value="">{t("select product")}</option>
+                      <option value="">
+                        {products.length === 0 ? "Loading products..." : t("select product")}
+                      </option>
                       {products.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.name}
+                          {p.name} - ${p.price}
                         </option>
                       ))}
                     </select>

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   PieChart,
   Pie,
@@ -11,135 +11,221 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { useTranslation } from "../Components/Context/LanguageContext";
+import { dashboardService } from "../services/dashboardService";
 
 export default function DashBoard() {
   const { t, language } = useTranslation();
 
-  const quotations = [
-    { status: t("draft"), customer: "Ali Traders", date: "2025-05-29" },
-    { status: t("approved"), customer: "Zara Corp", date: "2025-05-28" },
-    { status: t("rejected"), customer: "Tech Solutions", date: "2025-05-27" },
-    {
-      status: t("negotiation"),
-      customer: "Global Industries",
-      date: "2025-05-26",
-    },
-    { status: t("approved"), customer: "Smart Tech", date: "2025-05-25" },
-    { status: t("draft"), customer: "Future Innovations", date: "2025-05-24" },
-  ];
-  const salesOrders = [
-    { month: t("jan"), count: 5 },
-    { month: t("feb"), count: 8 },
-    { month: t("mar"), count: 4 },
-    { month: t("apr"), count: 7 },
-    { month: t("may"), count: 6 },
-  ];
-  const invoices = [
-    {
-      status: t("paid"),
-      amount: 5000,
-      customer: "Ali Traders",
-      date: "2025-05-29",
-    },
-    {
-      status: t("unpaid"),
-      amount: 150,
-      customer: "Zara Corp",
-      date: "2025-05-28",
-    },
-    {
-      status: t("paid"),
-      amount: 300,
-      customer: "Tech Solutions",
-      date: "2025-05-27",
-    },
-    {
-      status: t("unpaid"),
-      amount: 100,
-      customer: "Global Industries",
-      date: "2025-05-26",
-    },
-    {
-      status: t("partially_paid"),
-      amount: 250,
-      customer: "Smart Tech",
-      date: "2025-05-25",
-    },
-  ];
-  const revenueData = [
-    { month: t("jan"), amount: 1200 },
-    { month: t("feb"), amount: 800 },
-    { month: t("mar"), amount: 900 },
-    { month: t("apr"), amount: 1400 },
-    { month: t("may"), amount: 1000 },
-  ];
+  // State for dashboard data
+  const [dashboardData, setDashboardData] = useState({
+    quotations: [],
+    salesOrders: [],
+    invoices: [],
+    revenueTrend: [],
+    recentActivity: []
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [range, setRange] = useState("all");
-  const filterByRange = (arr) => {
-    if (range === "all") return arr;
-    const now = new Date();
-    let days = range === "7" ? 7 : 30;
-    return arr.filter((item) => {
-      const itemDate = new Date(item.date);
-      return (now - itemDate) / (1000 * 60 * 60 * 24) <= days;
-    });
+
+  // Fetch dashboard data when component mounts
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await dashboardService.getDashboardSummary();
+      
+      console.log('🔍 Raw dashboard data from backend:', data);
+      console.log('🔍 Revenue trend data:', data.revenueTrend);
+      console.log('🔍 Quotations data:', data.quotations);
+      console.log('🔍 Sales Orders data:', data.salesOrders);
+      console.log('🔍 Invoices data:', data.invoices);
+      
+      // Transform backend data to frontend format
+      setDashboardData({
+        quotations: data.quotations || [],
+        salesOrders: data.salesOrders || [],
+        invoices: data.invoices || [],
+        revenueTrend: data.revenueTrend || [],
+        recentActivity: data.recentActivity || []
+      });
+    } catch (err) {
+      setError('Failed to fetch dashboard data. Please try again.');
+      console.error('Error fetching dashboard data:', err);
+    } finally {
+      setLoading(false);
+    }
   };
-  const filteredQuotations = filterByRange(quotations);
-  const filteredInvoices = filterByRange(invoices);
+  // Process data for charts and stats
+  const processedData = React.useMemo(() => {
+    if (loading || !dashboardData) return { 
+      quotationsStats: [], 
+      invoicesStats: [], 
+      totalQuotations: 0, 
+      totalSalesOrders: 0, 
+      totalInvoices: 0, 
+      outstandingReceivables: 0,
+      revenueTrendForChart: [],
+      recentActivityForTable: []
+    };
 
-  const quotationsStats = [
-    t("draft"),
-    t("approved"),
-    t("rejected"),
-    t("negotiation"),
-  ].map((status) => ({
-    name: status,
-    value: quotations.filter((q) => q.status === status).length,
-  }));
+    // Process quotations stats
+    const quotationsStats = dashboardData.quotations.length > 0 
+      ? dashboardData.quotations.map(item => ({
+          name: item.status,
+          value: parseInt(item.count) || 0,
+        }))
+      : [{ name: 'No Data', value: 0 }];
 
-  const invoicesStats = [t("paid"), t("unpaid"), t("partially_paid")].map(
-    (status) => ({
-      name: status,
-      value: invoices
-        .filter((inv) => inv.status === status)
-        .reduce((sum, i) => sum + i.amount, 0),
-    })
-  );
+    // Process sales orders stats  
+    const salesOrdersStats = dashboardData.salesOrders.length > 0
+      ? dashboardData.salesOrders.map(item => ({
+          name: item.status,
+          value: parseInt(item.count) || 0,
+        }))
+      : [{ name: 'No Data', value: 0 }];
+
+    // Process invoices stats
+    const invoicesStats = dashboardData.invoices.length > 0
+      ? dashboardData.invoices.map(item => ({
+          name: item.status,
+          value: parseInt(item.count) || 0,
+        }))
+      : [{ name: 'No Data', value: 0 }];
+
+    // Calculate totals
+    const totalQuotations = quotationsStats.reduce((sum, item) => sum + item.value, 0);
+    const totalSalesOrders = salesOrdersStats.reduce((sum, item) => sum + item.value, 0);
+    const totalInvoices = invoicesStats.reduce((sum, item) => sum + item.value, 0);
+    
+    // Calculate outstanding receivables (unpaid + partially paid invoices)
+    const unpaidCount = invoicesStats.find(item => item.name === 'Unpaid')?.value || 0;
+    const partiallyPaidCount = invoicesStats.find(item => item.name === 'Partially Paid')?.value || 0;
+    const outstandingReceivables = unpaidCount + partiallyPaidCount;
+
+    // Process revenue trend for chart
+    const revenueTrendForChart = dashboardData.revenueTrend.length > 0
+      ? dashboardData.revenueTrend.map(item => {
+          console.log('🔍 Processing revenue item:', item);
+          return {
+            month: item.month,
+            amount: parseFloat(item.revenue) || 0,
+          };
+        })
+      : [{ month: 'No Data', amount: 0 }];
+
+    console.log('🔍 Processed revenue trend for chart:', revenueTrendForChart);
+
+    // Process recent activity for table
+    const recentActivityForTable = dashboardData.recentActivity.length > 0
+      ? dashboardData.recentActivity.map(item => ({
+          id: item.reference,
+          type: item.type,
+          reference: item.reference,
+          customer: item.customer_name || `Customer ${item.customer_id}`,
+          status: item.status,
+          amount: parseFloat(item.total_amount) || 0,
+          date: item.created_at ? new Date(item.created_at).toLocaleDateString() : 'N/A',
+          rawDate: item.created_at
+        }))
+      : [];
+
+    console.log('🔍 Processed recent activity for table:', recentActivityForTable);
+
+    return {
+      quotationsStats,
+      salesOrdersStats,
+      invoicesStats,
+      totalQuotations,
+      totalSalesOrders,
+      totalInvoices,
+      outstandingReceivables,
+      revenueTrendForChart,
+      recentActivityForTable
+    };
+  }, [dashboardData, loading]);
+
+  const { quotationsStats, salesOrdersStats, invoicesStats, totalQuotations, totalSalesOrders, totalInvoices, outstandingReceivables, revenueTrendForChart, recentActivityForTable } = processedData;
 
   const COLORS = ["#10b981", "#6366f1", "#f59e42", "#ef4444", "#a855f7"];
-  const totalQuotations = filteredQuotations.length;
-  const totalSalesOrders = salesOrders.reduce((sum, s) => sum + s.count, 0);
-  const totalInvoices = filteredInvoices.length;
-  const OutStandingReceivables = invoices
-    .filter((i) => i.status !== t("paid"))
-    .reduce((sum, i) => sum + i.amount, 0);
 
-  const recentActivity = [
-    ...filteredQuotations.map((q) => ({
-      type: t("quotation"),
-      customer: q.customer,
-      status: q.status,
-      date: q.date,
-    })),
-    ...filteredInvoices.map((inv) => ({
-      type: t("invoice"),
-      customer: inv.customer,
-      status: inv.status,
-      date: inv.date,
-    })),
-  ]
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .slice(0, 10);
+  // Helper function to get status color for recent activity
+  const getStatusColor = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'draft': return 'bg-gray-100 text-gray-700';
+      case 'submitted': return 'bg-blue-100 text-blue-700';
+      case 'approved': return 'bg-green-100 text-green-700';
+      case 'confirmed': return 'bg-green-100 text-green-700';
+      case 'rejected': return 'bg-red-100 text-red-700';
+      case 'converted': return 'bg-purple-100 text-purple-700';
+      case 'paid': return 'bg-green-100 text-green-700';
+      case 'unpaid': return 'bg-red-100 text-red-700';
+      case 'partially paid': return 'bg-yellow-100 text-yellow-700';
+      default: return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  // Helper function to get type color for recent activity
+  const getTypeColor = (type) => {
+    switch (type?.toLowerCase()) {
+      case 'quotation': return 'bg-blue-50 text-blue-700 border border-blue-200';
+      case 'sales order': return 'bg-green-50 text-green-700 border border-green-200';
+      case 'invoice': return 'bg-purple-50 text-purple-700 border border-purple-200';
+      default: return 'bg-gray-50 text-gray-700 border border-gray-200';
+    }
+  };
 
   const handleRangeChange = ($event) => {
     setRange($event.target.value);
   };
 
+  if (loading) {
+    return (
+      <div className="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen py-10 px-2 md:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center py-12">
+            <div className="flex justify-center items-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-3 text-blue-600">Loading dashboard...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen py-10 px-2 md:px-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-extrabold tracking-tight mb-8 text-blue-900 drop-shadow-sm">
-          {t("dashboard")}
-        </h1>
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            {error}
+            <button 
+              onClick={() => setError(null)}
+              className="float-right text-red-700 hover:text-red-900"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-extrabold tracking-tight text-blue-900 drop-shadow-sm">
+            {t("dashboard")}
+          </h1>
+          <button 
+            className="bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white px-4 py-2 rounded-xl font-semibold shadow-lg transition-all duration-150"
+            onClick={fetchDashboardData}
+            disabled={loading}
+          >
+            🔄 {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
 
         <div className="mb-8 flex flex-wrap gap-4 items-center">
           <label className="text-base font-semibold text-blue-900">
@@ -186,7 +272,7 @@ export default function DashBoard() {
               {t("outstanding_receivables")}
             </h2>
             <p className="text-4xl font-extrabold text-rose-600">
-              ${OutStandingReceivables}
+              {outstandingReceivables}
             </p>
           </div>
         </div>
@@ -215,7 +301,7 @@ export default function DashBoard() {
               {t("monthly_revenue")}
             </h3>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={revenueData}>
+              <BarChart data={revenueTrendForChart}>
                 <XAxis
                   dataKey="month"
                   tick={{ fontWeight: 600, fill: "#64748b" }}
@@ -276,48 +362,51 @@ export default function DashBoard() {
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-xl border border-gray-100">
-          <h3 className="text-lg font-bold text-blue-900 mb-4">
-            {t("recent_activity")}
+        {/* Recent Activity Table */}
+        <div className="bg-white p-6 rounded-2xl shadow-xl border border-gray-100 mb-10">
+          <h3 className="text-lg font-bold text-blue-900 mb-6">
+            Recent Activity
           </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm rounded-xl overflow-hidden">
-              <thead>
-                <tr className="bg-blue-50 text-blue-900">
-                  <th className="p-3 font-semibold text-left">{t("type")}</th>
-                  <th className="p-3 font-semibold text-left">
-                    {t("customer")}
-                  </th>
-                  <th className="p-3 font-semibold text-left">{t("status")}</th>
-                  <th className="p-3 font-semibold text-left">{t("date")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentActivity.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-blue-50 transition">
-                    <td className="p-3">{item.type}</td>
-                    <td className="p-3">{item.customer}</td>
-                    <td className="p-3">
-                      <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-blue-900 border border-gray-200">
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="p-3">{item.date}</td>
+          {recentActivityForTable.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gradient-to-r from-blue-50 to-gray-50 text-blue-900">
+                    <th className="p-3 font-bold text-left rounded-tl-lg">Type</th>
+                    <th className="p-3 font-bold text-left">Reference</th>
+                    <th className="p-3 font-bold text-left">Customer</th>
+                    <th className="p-3 font-bold text-left">Status</th>
+                    <th className="p-3 font-bold text-left">Amount</th>
+                    <th className="p-3 font-bold text-left rounded-tr-lg">Date</th>
                   </tr>
-                ))}
-                {recentActivity.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={4}
-                      className="text-center text-gray-400 py-8 bg-white rounded-xl"
-                    >
-                      {t("no_activity_found")}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {recentActivityForTable.map((activity, index) => (
+                    <tr key={`activity-${activity.type}-${activity.reference}-${index}`} className="border-b border-gray-100 hover:bg-gray-50 transition">
+                      <td className="p-3">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getTypeColor(activity.type)}`}>
+                          {activity.type}
+                        </span>
+                      </td>
+                      <td className="p-3 font-semibold text-blue-900">{activity.reference}</td>
+                      <td className="p-3 text-gray-700">{activity.customer}</td>
+                      <td className="p-3">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(activity.status)}`}>
+                          {activity.status}
+                        </span>
+                      </td>
+                      <td className="p-3 font-semibold text-green-600">${activity.amount.toLocaleString()}</td>
+                      <td className="p-3 text-gray-500">{activity.date}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center text-gray-400 py-8">
+              <p>No recent activity found</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
