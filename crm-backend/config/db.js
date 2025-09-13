@@ -5,6 +5,7 @@ const connectionString = process.env.DATABASE_URL || process.env.DATABASE_PUBLIC
 
 console.log('DATABASE_URL value:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
 console.log('DATABASE_URL length:', process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 0);
+console.log('DATABASE_URL content:', process.env.DATABASE_URL);
 
 if (!connectionString || connectionString.includes('${{')) {
   console.error('DATABASE_URL not found or not resolved. Please check Railway service connection.');
