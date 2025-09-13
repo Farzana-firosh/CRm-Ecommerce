@@ -55,7 +55,7 @@ const translations = {
             localStorage.setItem('currentUser', JSON.stringify(user));
             
             console.log('Login successful, navigating to dashboard');
-            navigate('/dashboard');
+            navigate('/');
             window.location.reload();
             
         } catch (error) {
