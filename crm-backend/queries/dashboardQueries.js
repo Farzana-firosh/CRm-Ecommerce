@@ -81,11 +81,11 @@ exports.recentActivityQuery = `
     FROM quotations
     UNION ALL
     SELECT 
-      reference_no AS reference, 
+      order_number AS reference, 
       'Sales Order' AS type, 
       customer_id, 
       status,
-      COALESCE(grand_total, subtotal, 0) AS total_amount,
+      total_amount AS total_amount,
       created_at,
       CAST(customer_id AS TEXT) AS customer_name
     FROM sales_orders
