@@ -123,11 +123,11 @@ export default function DashBoard() {
     // Process recent activity for table
     const recentActivityForTable = dashboardData.recentActivity.length > 0
       ? dashboardData.recentActivity.map(item => ({
-          id: item.reference,
-          type: item.type,
-          reference: item.reference,
-          customer: item.customer_name || `Customer ${item.customer_id}`,
-          status: item.status,
+          id: item.reference || 'N/A',
+          type: item.type || 'Unknown',
+          reference: item.reference || 'N/A',
+          customer: item.customer_name || `Customer ${item.customer_id || 'Unknown'}`,
+          status: item.status || 'Unknown',
           amount: parseFloat(item.total_amount) || 0,
           date: item.created_at ? new Date(item.created_at).toLocaleDateString() : 'N/A',
           rawDate: item.created_at
@@ -155,7 +155,10 @@ export default function DashBoard() {
 
   // Helper function to get status color for recent activity
   const getStatusColor = (status) => {
-    switch (status?.toLowerCase()) {
+    if (!status || typeof status !== 'string') {
+      return 'bg-gray-100 text-gray-700';
+    }
+    switch (status.toLowerCase()) {
       case 'draft': return 'bg-gray-100 text-gray-700';
       case 'submitted': return 'bg-blue-100 text-blue-700';
       case 'approved': return 'bg-green-100 text-green-700';
@@ -171,7 +174,10 @@ export default function DashBoard() {
 
   // Helper function to get type color for recent activity
   const getTypeColor = (type) => {
-    switch (type?.toLowerCase()) {
+    if (!type || typeof type !== 'string') {
+      return 'bg-gray-50 text-gray-700 border border-gray-200';
+    }
+    switch (type.toLowerCase()) {
       case 'quotation': return 'bg-blue-50 text-blue-700 border border-blue-200';
       case 'sales order': return 'bg-green-50 text-green-700 border border-green-200';
       case 'invoice': return 'bg-purple-50 text-purple-700 border border-purple-200';
