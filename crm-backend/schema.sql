@@ -177,9 +177,9 @@ ON CONFLICT DO NOTHING;
 
 -- Insert test users
 INSERT INTO users (name, email, password) VALUES 
-    ('Admin User', 'admin@example.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'), -- password: admin123
-    ('Sales User', 'sales@example.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'), -- password: sales123
-    ('Finance User', 'finance@example.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi') -- password: finance123
+    ('Admin User', 'admin@example.com', '$2b$10$vEkyLIsSuwmiO0Q87WmkI.Tgrn4YyWphj80zvXXb8qMtUte78r0v6'), -- password: admin123
+    ('Sales User', 'sales@example.com', '$2b$10$r3jAcrc8K44dbvdIx63hyuCNfxzDCuzVdkzGFlKfU7ieelmoNddGm'), -- password: sales123
+    ('Finance User', 'finance@example.com', '$2b$10$3fXkYnljoPaUCrRitJqb0uKZ5YlIo2iJMLFBdJa7TbQYoSvSDKiaO') -- password: finance123
 ON CONFLICT (email) DO NOTHING;
 
 -- Assign roles to users

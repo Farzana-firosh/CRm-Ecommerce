@@ -50,13 +50,22 @@ async function login(req, res) {
     return res.status(400).json({ message: 'Email and password are required' });
   }
 
+  console.log('Login attempt for email:', email);
+  
   const users = await getUserByEmail(email);
   if (users.length === 0) {
+    console.log('No user found with email:', email);
     return res.status(401).json({ message: 'Invalid credentials' });
   }
 
   const user = users[0];
+  console.log('User found:', user.email);
+  console.log('Stored password hash:', user.password);
+  console.log('Input password:', password);
+  
   const isPasswordValid = compareWithHashedPassword(password, user.password);
+  console.log('Password valid:', isPasswordValid);
+  
   if (!isPasswordValid) {
     return res.status(401).json({ message: 'Invalid credentials' });
   }
