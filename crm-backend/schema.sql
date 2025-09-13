@@ -37,8 +37,12 @@ CREATE TABLE IF NOT EXISTS customers (
 CREATE TABLE IF NOT EXISTS items (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    item_type VARCHAR(50) DEFAULT 'Product',
     description TEXT,
-    unit_price DECIMAL(10,2) NOT NULL,
+    unit_of_measure VARCHAR(50) NOT NULL,
+    default_rate DECIMAL(10,2) NOT NULL,
+    tax_rate DECIMAL(5,2) DEFAULT 0,
+    status VARCHAR(50) DEFAULT 'Active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -188,6 +192,15 @@ INSERT INTO user_roles (user_id, role_id) VALUES
     (2, 2), -- Sales user gets Sales role
     (3, 3)  -- Finance user gets Finance role
 ON CONFLICT (user_id, role_id) DO NOTHING;
+
+-- Insert sample items
+INSERT INTO items (name, item_type, description, unit_of_measure, default_rate, tax_rate, status) VALUES 
+    ('Laptop Computer', 'Product', 'High-performance laptop for business use', 'Unit', 1200.00, 10.0, 'Active'),
+    ('Office Chair', 'Product', 'Ergonomic office chair', 'Unit', 150.00, 8.5, 'Active'),
+    ('Consulting Service', 'Service', 'Professional consulting services', 'Hour', 100.00, 0.0, 'Active'),
+    ('Software License', 'Product', 'Annual software license', 'License', 500.00, 20.0, 'Active'),
+    ('Maintenance Service', 'Service', 'Monthly maintenance service', 'Month', 200.00, 0.0, 'Active')
+ON CONFLICT DO NOTHING;
 
 -- Insert sample data for dashboard
 INSERT INTO customers (name, email, phone) VALUES 
