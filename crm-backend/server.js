@@ -83,6 +83,17 @@ app.use('/api/organization', organizationRoutes);
 app.use(errorHandlers);
 
 const PORT = process.env.PORT || 5000;
+
+// Test database connection on startup
+const pool = require('./config/db');
+pool.query('SELECT NOW()', (err, result) => {
+  if (err) {
+    console.error('Database connection failed:', err);
+  } else {
+    console.log('Database connected successfully:', result.rows[0]);
+  }
+});
+
 app.listen(PORT,()=>{
     console.log(` Server is running on Port ${PORT}`);
    
