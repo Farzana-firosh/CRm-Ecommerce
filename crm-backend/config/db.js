@@ -1,7 +1,7 @@
 const {Pool} = require('pg')
 
-// Use Railway's built-in DATABASE_URL or fallback to local development
-const connectionString = process.env.DATABASE_URL || process.env.DATABASE_PUBLIC_URL;
+// Use Railway's public DATABASE_URL for external connections
+const connectionString = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
 
 console.log('DATABASE_URL value:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
 console.log('DATABASE_URL length:', process.env.DATABASE_URL ? process.env.DATABASE_URL.length : 0);
